@@ -73,7 +73,7 @@ else:
     """
     
     model = genai.GenerativeModel(
-        model_name="models/gemini-1.5-flash",
+        model_name="gemini-pro",
         system_instruction=sys_instruction
     )
 
