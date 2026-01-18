@@ -70,7 +70,7 @@ sys_instruction = f"""
 # 嘗試建立模型 (這裡保留你之前測試成功的模型名稱)
 # 如果你之前用 models/gemini-1.5-flash 成功，請保持不動
 model = genai.GenerativeModel(
-    model_name="models/gemini-1.5-flash", 
+    model_name="models/gemini-2.5-flash-lite", 
     system_instruction=sys_instruction
 )
 
