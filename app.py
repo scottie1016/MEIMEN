@@ -53,7 +53,7 @@ with st.sidebar:
         st.session_state.knowledge_base = ""
 
 # --- 5. 主介面：聊天區 ---
-st.title("🤖 智能 Q&A 助手")
+st.title("🤖 甩戒 - 智能助手")
 
 # 檢查是否有知識庫
 if not st.session_state.knowledge_base:
