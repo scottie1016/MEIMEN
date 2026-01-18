@@ -1,80 +1,103 @@
 import streamlit as st
 import google.generativeai as genai
+import PyPDF2
+import pandas as pd
+from io import StringIO
 
-# --- 1. 設定頁面配置 ---
-st.set_page_config(page_title="我的 Q&A 助手", page_icon="🤖")
+# --- 1. 設定頁面 ---
+st.set_page_config(page_title="AI 智能知識庫", page_icon="📂")
 
-# --- 2. 讀取 API Key (從 Streamlit Secrets 安全讀取) ---
-# 注意：本機測試時，若沒有設定 secrets，會報錯。建議直接部署到 Streamlit Cloud 設定。
+# --- 2. 讀取 API Key ---
 try:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-except Exception as e:
-    st.error("找不到 API Key，請檢查 Streamlit 的 Secrets 設定。")
+except Exception:
+    st.error("⚠️ 請先在 Streamlit Secrets 設定 GOOGLE_API_KEY")
     st.stop()
 
-# --- 3. 定義你的 Q&A 資料 (知識庫) ---
-# 技巧：如果是簡單的問答，直接貼在這裡最快。
-# 如果資料超過 50 題，建議另外用讀取 txt 檔案的方式。
-qa_knowledge_base = """
-Q: 公司的營業時間是幾點？
-A: 我們週一至週五早上 9:00 到下午 6:00 營業，國定假日休息。
-
-Q: 商品可以退貨嗎？
-A: 是的，購買後 7 天內保持包裝完整皆可退貨。請聯繫客服信箱 service@example.com。
-
-Q: 你們有提供海外運送嗎？
-A: 目前僅提供台灣本島與離島的運送服務，海外暫未開放。
-
-(請在此處繼續貼上您收集好的 Q&A...)
-"""
-
-# --- 4. 設定 AI 模型與系統指令 ---
-# 使用 gemini-1.5-flash，速度快且免費額度高
-sys_instruction = f"""
-你是一個專業的問答助手。你的任務是「嚴格根據」以下的資料庫回答使用者的問題。
-
-規則：
-1. 只能使用資料庫內的資訊，不要自己編造或聯網搜尋。
-2. 如果使用者的問題在資料庫中找不到答案，請直接回答：「不好意思，目前的資料庫中沒有相關資訊，建議您直接聯繫人工客服。」
-3. 回答要親切、簡潔。
-
-資料庫內容：
-{qa_knowledge_base}
-"""
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    system_instruction=sys_instruction
-)
-
-# --- 5. 建立聊天介面 ---
-st.title("🤖 專屬 Q&A 知識庫")
-st.caption("請輸入問題，我會根據已有的資料庫回答您。")
-
-# 初始化聊天紀錄
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# 顯示過去的對話
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-# 接收使用者輸入
-if prompt := st.chat_input("請問有什麼我可以幫您的？"):
-    # 1. 顯示使用者問題
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # 2. 呼叫 Gemini 生成回答
+# --- 3. 檔案處理函數 ---
+def extract_text(uploaded_file):
+    """根據檔案類型讀取文字內容"""
+    text = ""
     try:
-        response = model.generate_content(prompt)
-        answer = response.text
+        if uploaded_file.name.endswith(".pdf"):
+            pdf_reader = PyPDF2.PdfReader(uploaded_file)
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+        elif uploaded_file.name.endswith(".txt"):
+            text = uploaded_file.read().decode("utf-8")
+        elif uploaded_file.name.endswith(".csv"):
+            df = pd.read_csv(uploaded_file)
+            text = df.to_string()
+        elif uploaded_file.name.endswith(".xlsx"):
+            df = pd.read_excel(uploaded_file)
+            text = df.to_string()
     except Exception as e:
-        answer = "系統忙碌中，請稍後再試。"
+        return f"讀取錯誤: {str(e)}"
+    return text
+
+# --- 4. 側邊欄：上傳資料區 ---
+with st.sidebar:
+    st.header("📂 知識庫管理")
+    uploaded_file = st.file_uploader("上傳 Q&A 文件", type=["pdf", "txt", "csv", "xlsx"])
     
-    # 3. 顯示 AI 回答
-    with st.chat_message("assistant"):
-        st.markdown(answer)
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+    # 狀態指示
+    if uploaded_file:
+        if "last_uploaded" not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
+            with st.spinner("正在讀取文件..."):
+                extracted_text = extract_text(uploaded_file)
+                st.session_state.knowledge_base = extracted_text
+                st.session_state.last_uploaded = uploaded_file.name
+            st.success(f"✅ 已讀取：{uploaded_file.name}")
+    else:
+        st.info("請上傳檔案以啟用問答功能")
+        st.session_state.knowledge_base = ""
+
+# --- 5. 主介面：聊天區 ---
+st.title("🤖 智能 Q&A 助手")
+
+# 檢查是否有知識庫
+if not st.session_state.knowledge_base:
+    st.warning("👈 請先在左側上傳您的 Q&A 資料 (支援 PDF, Excel, Txt)")
+else:
+    # 設定 AI 模型
+    sys_instruction = f"""
+    你是一個專業的客服助手。請根據以下提供的「知識庫內容」回答使用者的問題。
+    
+    規則：
+    1. 答案必須來自知識庫，嚴禁瞎掰。
+    2. 如果知識庫沒有提到，請回答「不好意思，文件中沒有相關資訊」。
+    3. 若是 Excel 表格數據，請精準回答數值。
+
+    知識庫內容：
+    {st.session_state.knowledge_base}
+    """
+    
+    model = genai.GenerativeModel(
+        model_name="gemini-1.5-flash",
+        system_instruction=sys_instruction
+    )
+
+    # 顯示聊天紀錄
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # 接收輸入
+    if prompt := st.chat_input("請輸入您的問題..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # 呼叫 AI
+        try:
+            response = model.generate_content(prompt)
+            answer = response.text
+        except Exception as e:
+            answer = "⚠️ 系統連線錯誤，請稍後再試。"
+
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+        st.session_state.messages.append({"role": "assistant", "content": answer})
