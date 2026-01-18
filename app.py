@@ -96,7 +96,7 @@ else:
             response = model.generate_content(prompt)
             answer = response.text
         except Exception as e:
-            answer = "⚠️ 系統連線錯誤，請稍後再試。"
+            answer = f"⚠️ 發生錯誤，詳細原因：{str(e)}"
 
         with st.chat_message("assistant"):
             st.markdown(answer)
